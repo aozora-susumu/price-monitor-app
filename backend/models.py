@@ -21,6 +21,8 @@ class WatchItem(BaseModel):
     drop_rate_threshold: float = 0.05
     notify_to: EmailStr | None = None
     last_checked: datetime | None = None
+    # Internal optimistic-lock token from DB; excluded from API responses.
+    updated_at: datetime | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod

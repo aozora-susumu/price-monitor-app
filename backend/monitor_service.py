@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from models import CheckResult, CheckSummary, WatchItem
 from notifiers import send_email_notification
 from rakuten_client import get_product_by_item_code
-from storage import load_watch_items, log_notification, save_watch_items
+from storage import apply_monitor_update, load_watch_items
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 DEFAULT_NOTIFY_TO = os.getenv("NOTIFY_TO_EMAIL")
@@ -38,7 +38,7 @@ def check_all_prices() -> CheckSummary:
     results: list[CheckResult] = []
     notified_count = 0
 
-    for index, item in enumerate(items):
+    for item in items:
         if not item.notify:
             results.append(
                 CheckResult(
@@ -53,32 +53,52 @@ def check_all_prices() -> CheckSummary:
         try:
             product = get_product_by_item_code(item.item_code)
             previous_price = item.current_price
-            item.title = product.title
-            item.url = product.url
-            item.image = product.image
-            item.current_price = product.current_price
-            item.price_history.append(product.price_history[-1])
-            item.last_checked = datetime.now(UTC)
+            checked_at = datetime.now(UTC)
+            history_point = product.price_history[-1]
 
             notified = False
+            recipient: str | None = None
+            notify_message = "No notification needed"
             if previous_price > 0:
-                drop_rate = (previous_price - item.current_price) / previous_price
+                drop_rate = (previous_price - product.current_price) / previous_price
             else:
                 drop_rate = 0
 
-            if drop_rate >= item.drop_rate_threshold:
+            should_log = drop_rate >= item.drop_rate_threshold
+            if should_log:
                 notified, recipient = _notify(item)
-                log_notification(
-                    item_code=item.item_code,
-                    recipient=recipient,
-                    previous_price=previous_price,
-                    current_price=item.current_price,
-                    drop_rate=drop_rate,
-                    success=notified,
-                    message=("Sent" if notified else "Notification sending failed"),
-                )
+                notify_message = "Sent" if notified else "Notification sending failed"
                 if notified:
                     notified_count += 1
+
+            applied = apply_monitor_update(
+                item=item,
+                title=product.title,
+                url=product.url,
+                image=product.image,
+                current_price=product.current_price,
+                checked_at=checked_at,
+                history_checked_at=history_point.timestamp,
+                should_log=should_log,
+                recipient=recipient,
+                previous_price=previous_price,
+                drop_rate=drop_rate,
+                notify_success=notified,
+                notify_message=notify_message,
+            )
+
+            if not applied:
+                results.append(
+                    CheckResult(
+                        item_code=item.item_code,
+                        checked=False,
+                        notified=False,
+                        message=(
+                            "Skipped due to concurrent update (optimistic lock conflict)"
+                        ),
+                    )
+                )
+                continue
 
             results.append(
                 CheckResult(
@@ -88,7 +108,6 @@ def check_all_prices() -> CheckSummary:
                     message=(f"Checked successfully (drop_rate={drop_rate:.4f})"),
                 )
             )
-            items[index] = item
         except Exception as exc:  # pragma: no cover
             results.append(
                 CheckResult(
@@ -98,8 +117,6 @@ def check_all_prices() -> CheckSummary:
                     message=f"Check failed: {exc}",
                 )
             )
-
-    save_watch_items(items)
 
     return CheckSummary(
         checked_at=datetime.now(UTC),
