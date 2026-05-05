@@ -9,12 +9,26 @@ from models import PricePoint, RakutenProduct
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
 RAKUTEN_APP_ID = os.getenv("RAKUTEN_APP_ID")
-BASE_URL = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
+RAKUTEN_ACCESS_KEY = os.getenv("RAKUTEN_ACCESS_KEY")
+RAKUTEN_APP_URL = os.getenv("RAKUTEN_APP_URL", "")
+BASE_URL = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260401"
 
 
 def _validate_app_id() -> None:
     if not RAKUTEN_APP_ID:
         raise RuntimeError("RAKUTEN_APP_ID is not set")
+    if not RAKUTEN_ACCESS_KEY:
+        raise RuntimeError("RAKUTEN_ACCESS_KEY is not set")
+    if not RAKUTEN_APP_URL:
+        raise RuntimeError("RAKUTEN_APP_URL is not set")
+
+
+def _auth_headers() -> dict:
+    return {
+        "accessKey": RAKUTEN_ACCESS_KEY,
+        "Origin": RAKUTEN_APP_URL,
+        "Referer": RAKUTEN_APP_URL + "/",
+    }
 
 
 def _extract_image(item: dict) -> str | None:
@@ -38,9 +52,14 @@ def _to_product(item: dict) -> RakutenProduct:
 
 def search_item(keyword: str) -> dict | None:
     _validate_app_id()
-    params = {"applicationId": RAKUTEN_APP_ID, "keyword": keyword, "hits": 1}
-
-    response = requests.get(BASE_URL, params=params, timeout=30)
+    params = {
+        "applicationId": RAKUTEN_APP_ID,
+        "keyword": keyword,
+        "hits": 1,
+    }
+    response = requests.get(
+        BASE_URL, params=params, headers=_auth_headers(), timeout=30
+    )
     response.raise_for_status()
 
     data = response.json()
@@ -65,8 +84,9 @@ def get_product_by_item_code(item_code: str) -> RakutenProduct:
         "itemCode": item_code,
         "hits": 1,
     }
-
-    response = requests.get(BASE_URL, params=params, timeout=30)
+    response = requests.get(
+        BASE_URL, params=params, headers=_auth_headers(), timeout=30
+    )
     response.raise_for_status()
     data = response.json()
 

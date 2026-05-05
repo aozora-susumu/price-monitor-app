@@ -1,8 +1,11 @@
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from requests import RequestException
 
 # Always read backend/.env regardless of current working directory.
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
@@ -25,6 +28,19 @@ from storage import (
 
 app = FastAPI()
 
+_raw_origins = os.getenv(
+    "CORS_ALLOW_ORIGINS", "http://localhost:5173,http://localhost:5174"
+)
+_allow_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/")
 def root():
@@ -38,7 +54,17 @@ def get_items():
 
 @app.post("/api/items")
 def add_item(payload: AddWatchItemRequest):
-    product = get_product_by_keyword(payload.keyword)
+    try:
+        product = get_product_by_keyword(payload.keyword)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RequestException as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Rakuten API request failed: {exc}"
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     existing = get_watch_item(product.item_code)
     if existing:
         raise HTTPException(status_code=409, detail="itemCode already exists")
