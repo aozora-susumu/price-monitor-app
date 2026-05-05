@@ -9,8 +9,10 @@ import {
   Chip,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   Slider,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -27,6 +29,12 @@ interface Props {
 
 export default function ItemCard({ item, onUpdated, onDeleted }: Props) {
   const [loading, setLoading] = useState(false);
+  const [thresholdPct, setThresholdPct] = useState(
+    Math.round(item.drop_rate_threshold * 100)
+  );
+  const [thresholdInput, setThresholdInput] = useState(
+    String(Math.round(item.drop_rate_threshold * 100))
+  );
 
   const handleNotifyToggle = async () => {
     setLoading(true);
@@ -40,17 +48,49 @@ export default function ItemCard({ item, onUpdated, onDeleted }: Props) {
     }
   };
 
-  const handleThresholdChange = async (_: Event, value: number | number[]) => {
-    const threshold = (value as number) / 100;
+  const handleThresholdChange = (_: Event, value: number | number[]) => {
+    setThresholdPct(value as number);
+  };
+
+  const handleThresholdCommit = async (
+    _: React.SyntheticEvent | Event,
+    value: number | number[]
+  ) => {
+    const pct = value as number;
+    setThresholdPct(pct);
     setLoading(true);
     try {
       const updated = await updateItem(item.item_code, {
-        drop_rate_threshold: threshold,
+        drop_rate_threshold: pct / 100,
       });
       onUpdated(updated);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleThresholdInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setThresholdInput(e.target.value);
+  };
+
+  const commitThresholdInput = async () => {
+    const raw = parseInt(thresholdInput, 10);
+    const pct = isNaN(raw) ? thresholdPct : Math.min(50, Math.max(1, raw));
+    setThresholdPct(pct);
+    setThresholdInput(String(pct));
+    setLoading(true);
+    try {
+      const updated = await updateItem(item.item_code, {
+        drop_rate_threshold: pct / 100,
+      });
+      onUpdated(updated);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleThresholdKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commitThresholdInput();
   };
 
   const handleDelete = async () => {
@@ -124,23 +164,42 @@ export default function ItemCard({ item, onUpdated, onDeleted }: Props) {
 
           <Box>
             <Typography variant="body2" gutterBottom>
-              通知閾値: {(item.drop_rate_threshold * 100).toFixed(0)}% 以上の下落
+              通知閾値: {thresholdPct}% 以上の下落
             </Typography>
-            <Slider
-              value={item.drop_rate_threshold * 100}
-              min={1}
-              max={50}
-              step={1}
-              marks={[
-                { value: 5, label: '5%' },
-                { value: 10, label: '10%' },
-                { value: 20, label: '20%' },
-                { value: 30, label: '30%' },
-              ]}
-              onChange={handleThresholdChange}
-              disabled={loading || !item.notify}
-              sx={{ maxWidth: 400 }}
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Slider
+                value={thresholdPct}
+                min={1}
+                max={50}
+                step={1}
+                marks={[
+                  { value: 5, label: '5%' },
+                  { value: 10, label: '10%' },
+                  { value: 20, label: '20%' },
+                  { value: 30, label: '30%' },
+                ]}
+                onChange={handleThresholdChange}
+                onChangeCommitted={handleThresholdCommit}
+                disabled={loading || !item.notify}
+                sx={{ flex: 1, maxWidth: 340 }}
+              />
+              <TextField
+                type="number"
+                size="small"
+                value={thresholdInput}
+                onChange={handleThresholdInput}
+                onBlur={commitThresholdInput}
+                onKeyDown={handleThresholdKeyDown}
+                disabled={loading || !item.notify}
+                slotProps={{
+                  input: {
+                    endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                    inputProps: { min: 1, max: 50 },
+                  },
+                }}
+                sx={{ width: 88 }}
+              />
+            </Box>
           </Box>
 
           <Box
