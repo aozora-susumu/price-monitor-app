@@ -13,6 +13,7 @@ pydantic==2.13.2
 pydantic_core==2.46.2
 python-dotenv==1.2.2
 requests==2.33.1
+pytest==8.4.2
 starlette==1.0.0
 supabase==2.23.0
 typing-inspection==0.4.2
