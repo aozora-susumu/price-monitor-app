@@ -9,6 +9,8 @@ LEGACY_JSON_PATH = Path(__file__).parent / "data" / "watchlist.json"
 
 
 def _as_bool(value: bool | int | None, default: bool = True) -> bool:
+    # Supabase Python SDK は boolean カラムを環境によって bool / int で返す場合がある。
+    # 両方に対応するため明示的に正規化する。
     if value is None:
         return default
     if isinstance(value, bool):
@@ -33,6 +35,8 @@ def _watch_item_row(item: WatchItem) -> dict:
 
 
 def _replace_price_history(item_code: str, item: WatchItem) -> None:
+    # price_history には (item_code, checked_at) の複合ユニーク制約がないため
+    # upsert が使えず、全削除→再 INSERT で整合性を保つ。
     client = get_supabase_client()
     client.table("price_history").delete().eq("item_code", item_code).execute()
     rows = [
@@ -48,6 +52,8 @@ def _replace_price_history(item_code: str, item: WatchItem) -> None:
 
 
 def _hydrate_watch_items(items_data: list[dict]) -> list[WatchItem]:
+    # price_history を item ごとに個別取得すると N+1 になるため、
+    # item_code の IN 句で一括取得してメモリ上で結合する。
     if not items_data:
         return []
 
@@ -90,6 +96,8 @@ def _hydrate_watch_items(items_data: list[dict]) -> list[WatchItem]:
 
 
 def _migrate_legacy_json() -> None:
+    # ローカル JSON（旧バージョン）から Supabase への一回限りのデータ移行。
+    # DB にレコードが存在する場合は移行済みとみなしてスキップする。
     if not LEGACY_JSON_PATH.exists():
         return
 
@@ -125,21 +133,22 @@ def load_watch_items() -> list[WatchItem]:
     return _hydrate_watch_items(result.data or [])
 
 
-def save_watch_items(items: list[WatchItem]) -> None:
-    client = get_supabase_client()
-    for item in items:
-        client.table("watch_items").upsert(
-            _watch_item_row(item), on_conflict="item_code"
-        ).execute()
-        _replace_price_history(item.item_code, item)
-
-
 def upsert_watch_item(item: WatchItem) -> WatchItem:
+    """Insert or fully replace a watch item, including its price history."""
     client = get_supabase_client()
     client.table("watch_items").upsert(
         _watch_item_row(item), on_conflict="item_code"
     ).execute()
     _replace_price_history(item.item_code, item)
+    return item
+
+
+def update_watch_item_fields(item: WatchItem) -> WatchItem:
+    """Update watch_items fields only; does NOT touch price_history."""
+    client = get_supabase_client()
+    client.table("watch_items").update(_watch_item_row(item)).eq(
+        "item_code", item.item_code
+    ).execute()
     return item
 
 
@@ -199,6 +208,13 @@ def apply_monitor_update(
     notify_success: bool,
     notify_message: str,
 ) -> bool:
+    """価格チェック結果を DB へ原子的に書き込む。
+
+    watch_items の更新・price_history の追記・notification_logs への記録を
+    単一の Supabase RPC（PostgreSQL 関数）で実行することで、
+    並行チェックによる競合を楽観的ロック（updated_at の一致確認）で防ぐ。
+    戻り値が False の場合は競合によるスキップを意味する。
+    """
     client = get_supabase_client()
 
     result = client.rpc(
@@ -222,6 +238,8 @@ def apply_monitor_update(
             "p_notify_message": notify_message,
         },
     ).execute()
+    # Supabase SDK のバージョンによって RPC の戻り値の型が異なるため
+    # bool / list[bool] / list[dict] の全パターンに対応する。
     data = result.data
     if isinstance(data, bool):
         return data

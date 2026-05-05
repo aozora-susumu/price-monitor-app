@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,12 +14,12 @@ DEFAULT_NOTIFY_TO = os.getenv("NOTIFY_TO_EMAIL")
 
 
 def _build_message(item: WatchItem) -> tuple[str, str]:
-    subject = f"[Price Alert] {item.title}"
+    subject = f"【価格下落通知】{item.title}"
     body = (
-        f"Item code: {item.item_code}\n"
-        f"Title: {item.title}\n"
-        f"URL: {item.url}\n"
-        f"Current price: {item.current_price}\n"
+        f"監視中の商品の価格が下落しました。\n\n"
+        f"商品名: {item.title}\n"
+        f"現在価格: ¥{item.current_price:,}\n"
+        f"商品ページ: {item.url}\n"
     )
     return subject, body
 
@@ -64,6 +65,8 @@ def check_all_prices() -> CheckSummary:
             else:
                 drop_rate = 0
 
+            # should_log は「開履歴に記録するか」、notified は「メールが実際に送信できたか」を表す。
+            # 閾値を超えていても宛先が未設定の場合など、should_log=True・notified=False は起こり得る。
             should_log = drop_rate >= item.drop_rate_threshold
             if should_log:
                 notified, recipient = _notify(item)
@@ -71,6 +74,8 @@ def check_all_prices() -> CheckSummary:
                 if notified:
                     notified_count += 1
 
+            # apply_monitor_update は楽観的ロックによる原子的書き込み。
+            # False の場合は並行リクエストによる競合が発生したことを意味する。
             applied = apply_monitor_update(
                 item=item,
                 title=product.title,
@@ -109,6 +114,7 @@ def check_all_prices() -> CheckSummary:
                 )
             )
         except Exception as exc:  # pragma: no cover
+            logging.exception("Price check failed for item_code=%s", item.item_code)
             results.append(
                 CheckResult(
                     item_code=item.item_code,

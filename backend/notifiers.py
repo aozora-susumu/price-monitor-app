@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -31,4 +32,12 @@ def send_email_notification(to_email: str, subject: str, body: str) -> bool:
         timeout=20,
     )
 
-    return response.status_code in {200, 202}
+    if response.status_code not in {200, 202}:
+        logging.warning(
+            "SendGrid request failed: status=%s body=%s",
+            response.status_code,
+            response.text[:200],
+        )
+        return False
+
+    return True

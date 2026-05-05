@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from requests import RequestException
 
@@ -23,6 +23,7 @@ from storage import (
     get_notification_logs,
     get_watch_item,
     load_watch_items,
+    update_watch_item_fields,
     upsert_watch_item,
 )
 
@@ -99,7 +100,7 @@ def update_item(item_code: str, payload: UpdateWatchItemRequest):
     if payload.notify_to is not None:
         current.notify_to = payload.notify_to
 
-    upsert_watch_item(current)
+    update_watch_item_fields(current)
     return current
 
 
@@ -108,14 +109,16 @@ def check_now():
     return check_all_prices()
 
 
-@app.delete("/api/items/{item_code}")
-def delete_item(item_code: str):
+@app.delete("/api/items/{item_code}", status_code=204)
+def delete_item(item_code: str) -> Response:
     deleted = delete_watch_item(item_code)
     if not deleted:
         raise HTTPException(status_code=404, detail="itemCode not found")
-    return {"deleted": True, "item_code": item_code}
+    return Response(status_code=204)
 
 
 @app.get("/api/notifications", response_model=list[NotificationLog])
-def list_notifications(item_code: str | None = None, limit: int = 100):
+def get_notifications(
+    item_code: str | None = None, limit: int = 100
+) -> list[NotificationLog]:
     return get_notification_logs(item_code=item_code, limit=limit)

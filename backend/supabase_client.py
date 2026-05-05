@@ -10,6 +10,7 @@ load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
 @lru_cache
 def get_supabase_client() -> Client:
+    # lru_cache でインスタンスをプロセス内で再利用し、リクエストごとの接続オーバーヘッドを避ける。
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SECRET_API_KEY")
 

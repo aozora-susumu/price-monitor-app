@@ -3,6 +3,8 @@
   "editor.formatOnSave": true,
   "editor.wordWrap": "on",
 
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+
   // --- Python ---
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter",

@@ -27,9 +27,9 @@ class WatchItem(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_fields(cls, data: Any):
+        # 旧スキーマ（Amazon トラッカー時代のデータ）との後方互換性を保つ。
+        # DB マイグレーションなしで既存レコードを読み込めるようにするためのフォールバック。
         if isinstance(data, dict):
-            if "item_code" not in data and "asin" in data:
-                data["item_code"] = data["asin"]
             if "keyword" not in data:
                 data["keyword"] = data.get("title", "")
             if "url" not in data:
@@ -87,7 +87,3 @@ class NotificationLog(BaseModel):
     drop_rate: float
     success: bool
     message: str | None = None
-
-
-class RakutenRawResponse(BaseModel):
-    products: list[dict[str, Any]] = Field(default_factory=list)

@@ -1,5 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
 import { Box, Button, CircularProgress, TextField, Typography } from '@mui/material';
+import axios from 'axios';
 import { useState } from 'react';
 import { addItem } from '../api/items';
 import type { WatchItem } from '../types';
@@ -24,15 +25,7 @@ export default function AddItemForm({ onAdded }: Props) {
       onAdded(item);
       setKeyword('');
     } catch (err: unknown) {
-      if (
-        err &&
-        typeof err === 'object' &&
-        'response' in err &&
-        err.response &&
-        typeof err.response === 'object' &&
-        'status' in err.response &&
-        err.response.status === 409
-      ) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
         setError('この商品はすでに監視リストに追加されています');
       } else {
         setError('商品の追加に失敗しました。キーワードを確認してください');

@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function PriceChart({ history }: Props) {
-  if (history.length === 0) {
+  if (history.length < 2) {
     return null;
   }
 

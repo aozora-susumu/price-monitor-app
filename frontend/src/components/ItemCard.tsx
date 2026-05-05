@@ -1,4 +1,4 @@
-import DeleteIcon from '@mui/icons-material/Delete';
+﻿import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import {
@@ -9,17 +9,14 @@ import {
   Chip,
   FormControlLabel,
   IconButton,
-  InputAdornment,
-  Slider,
   Switch,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
-import { deleteItem, updateItem } from '../api/items';
+import { useItemCard } from '../hooks/useItemCard';
 import type { WatchItem } from '../types';
 import PriceChart from './PriceChart';
+import ThresholdControl from './ThresholdControl';
 
 interface Props {
   item: WatchItem;
@@ -28,81 +25,18 @@ interface Props {
 }
 
 export default function ItemCard({ item, onUpdated, onDeleted }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [thresholdPct, setThresholdPct] = useState(
-    Math.round(item.drop_rate_threshold * 100)
-  );
-  const [thresholdInput, setThresholdInput] = useState(
-    String(Math.round(item.drop_rate_threshold * 100))
-  );
-
-  const handleNotifyToggle = async () => {
-    setLoading(true);
-    try {
-      const updated = await updateItem(item.item_code, {
-        notify: !item.notify,
-      });
-      onUpdated(updated);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleThresholdChange = (_: Event, value: number | number[]) => {
-    setThresholdPct(value as number);
-  };
-
-  const handleThresholdCommit = async (
-    _: React.SyntheticEvent | Event,
-    value: number | number[]
-  ) => {
-    const pct = value as number;
-    setThresholdPct(pct);
-    setLoading(true);
-    try {
-      const updated = await updateItem(item.item_code, {
-        drop_rate_threshold: pct / 100,
-      });
-      onUpdated(updated);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleThresholdInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setThresholdInput(e.target.value);
-  };
-
-  const commitThresholdInput = async () => {
-    const raw = parseInt(thresholdInput, 10);
-    const pct = isNaN(raw) ? thresholdPct : Math.min(50, Math.max(1, raw));
-    setThresholdPct(pct);
-    setThresholdInput(String(pct));
-    setLoading(true);
-    try {
-      const updated = await updateItem(item.item_code, {
-        drop_rate_threshold: pct / 100,
-      });
-      onUpdated(updated);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleThresholdKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') commitThresholdInput();
-  };
-
-  const handleDelete = async () => {
-    if (!window.confirm(`「${item.title}」を削除しますか？`)) return;
-    setLoading(true);
-    try {
-      await deleteItem(item.item_code);
-      onDeleted(item.item_code);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    loading,
+    thresholdPct,
+    thresholdInput,
+    handleNotifyToggle,
+    handleThresholdChange,
+    handleThresholdCommit,
+    handleThresholdInput,
+    commitThresholdInput,
+    handleThresholdKeyDown,
+    handleDelete,
+  } = useItemCard({ item, onUpdated, onDeleted });
 
   const lastChecked = item.last_checked
     ? new Date(item.last_checked).toLocaleString('ja-JP')
@@ -149,58 +83,27 @@ export default function ItemCard({ item, onUpdated, onDeleted }: Props) {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <PriceChart history={item.price_history} />
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={item.notify}
-                  onChange={handleNotifyToggle}
-                  disabled={loading}
-                />
-              }
-              label="価格下落通知"
-            />
-          </Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={item.notify}
+                onChange={handleNotifyToggle}
+                disabled={loading}
+              />
+            }
+            label="価格下落通知"
+          />
 
-          <Box>
-            <Typography variant="body2" gutterBottom>
-              通知閾値: {thresholdPct}% 以上の下落
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Slider
-                value={thresholdPct}
-                min={1}
-                max={50}
-                step={1}
-                marks={[
-                  { value: 5, label: '5%' },
-                  { value: 10, label: '10%' },
-                  { value: 20, label: '20%' },
-                  { value: 30, label: '30%' },
-                ]}
-                onChange={handleThresholdChange}
-                onChangeCommitted={handleThresholdCommit}
-                disabled={loading || !item.notify}
-                sx={{ flex: 1, maxWidth: 340 }}
-              />
-              <TextField
-                type="number"
-                size="small"
-                value={thresholdInput}
-                onChange={handleThresholdInput}
-                onBlur={commitThresholdInput}
-                onKeyDown={handleThresholdKeyDown}
-                disabled={loading || !item.notify}
-                slotProps={{
-                  input: {
-                    endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                    inputProps: { min: 1, max: 50 },
-                  },
-                }}
-                sx={{ width: 88 }}
-              />
-            </Box>
-          </Box>
+          <ThresholdControl
+            value={thresholdPct}
+            inputValue={thresholdInput}
+            disabled={loading || !item.notify}
+            onChange={handleThresholdChange}
+            onChangeCommitted={handleThresholdCommit}
+            onInputChange={handleThresholdInput}
+            onInputBlur={commitThresholdInput}
+            onInputKeyDown={handleThresholdKeyDown}
+          />
 
           <Box
             sx={{

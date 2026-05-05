@@ -24,6 +24,8 @@ def _validate_app_id() -> None:
 
 
 def _auth_headers() -> dict:
+    # 楽天 API は applicationId 加えて Origin / Referer ヘッダーに
+    # 登録済みアプリ URL が設定されていないと 403 を返す。
     return {
         "accessKey": RAKUTEN_ACCESS_KEY,
         "Origin": RAKUTEN_APP_URL,
@@ -94,8 +96,3 @@ def get_product_by_item_code(item_code: str) -> RakutenProduct:
         raise ValueError(f"No product found for itemCode: {item_code}")
 
     return _to_product(data["Items"][0]["Item"])
-
-
-if __name__ == "__main__":
-    item = search_item("Fire TV Stick")
-    print(item["itemName"], item["itemPrice"])
