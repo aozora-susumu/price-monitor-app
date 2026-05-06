@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class PricePoint(BaseModel):
@@ -42,10 +42,18 @@ class WatchItem(BaseModel):
 
 
 class AddWatchItemRequest(BaseModel):
-    keyword: str
+    keyword: str = Field(min_length=1, max_length=100)
     notify: bool = True
     drop_rate_threshold: float = Field(default=0.05, gt=0, le=1)
     notify_to: EmailStr | None = None
+
+    @field_validator("keyword")
+    @classmethod
+    def validate_keyword(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("keyword must not be blank")
+        return normalized
 
 
 class UpdateWatchItemRequest(BaseModel):

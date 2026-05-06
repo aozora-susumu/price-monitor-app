@@ -22,15 +22,19 @@ def send_email_notification(to_email: str, subject: str, body: str) -> bool:
         "content": [{"type": "text/plain", "value": body}],
     }
 
-    response = requests.post(
-        "https://api.sendgrid.com/v3/mail/send",
-        headers={
-            "Authorization": f"Bearer {SENDGRID_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=20,
-    )
+    try:
+        response = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={
+                "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        logging.warning("SendGrid request exception: %s", exc)
+        return False
 
     if response.status_code not in {200, 202}:
         logging.warning(

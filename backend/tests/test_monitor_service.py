@@ -138,3 +138,80 @@ def test_check_all_prices_marks_conflict_when_optimistic_lock_fails(monkeypatch)
     assert summary.results[0].checked is False
     assert summary.results[0].notified is False
     assert "optimistic lock conflict" in summary.results[0].message
+
+
+def test_check_all_prices_updates_price_even_when_notification_is_disabled(monkeypatch):
+    item = _make_watch_item(current_price=1000, threshold=0.1, notify=False)
+    product = _make_product(item_code=item.item_code, price=900)
+
+    captured_apply_args: dict = {}
+
+    monkeypatch.setattr(monitor_service, "load_watch_items", lambda: [item])
+    monkeypatch.setattr(
+        monitor_service,
+        "get_product_by_item_code",
+        lambda _: product,
+    )
+
+    def _notify_should_not_be_called(_):
+        raise AssertionError("_notify should not be called when notify is disabled")
+
+    monkeypatch.setattr(monitor_service, "_notify", _notify_should_not_be_called)
+
+    def _fake_apply_monitor_update(**kwargs):
+        captured_apply_args.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        monitor_service,
+        "apply_monitor_update",
+        _fake_apply_monitor_update,
+    )
+
+    summary = monitor_service.check_all_prices()
+
+    assert summary.checked_count == 1
+    assert summary.notified_count == 0
+    assert summary.results[0].checked is True
+    assert summary.results[0].notified is False
+    assert captured_apply_args["current_price"] == 900
+    assert captured_apply_args["should_log"] is False
+
+
+def test_check_all_prices_continues_when_notify_step_raises(monkeypatch):
+    item = _make_watch_item(current_price=1000, threshold=0.1, notify=True)
+    product = _make_product(item_code=item.item_code, price=800)
+
+    captured_apply_args: dict = {}
+
+    monkeypatch.setattr(monitor_service, "load_watch_items", lambda: [item])
+    monkeypatch.setattr(
+        monitor_service,
+        "get_product_by_item_code",
+        lambda _: product,
+    )
+
+    def _notify_raises(_):
+        raise RuntimeError("temporary mail provider error")
+
+    monkeypatch.setattr(monitor_service, "_notify", _notify_raises)
+
+    def _fake_apply_monitor_update(**kwargs):
+        captured_apply_args.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        monitor_service,
+        "apply_monitor_update",
+        _fake_apply_monitor_update,
+    )
+
+    summary = monitor_service.check_all_prices()
+
+    assert summary.checked_count == 1
+    assert summary.notified_count == 0
+    assert summary.results[0].checked is True
+    assert summary.results[0].notified is False
+    assert captured_apply_args["should_log"] is True
+    assert captured_apply_args["notify_success"] is False
+    assert captured_apply_args["notify_message"] == "Notification sending failed"

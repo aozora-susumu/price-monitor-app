@@ -29,7 +29,13 @@ def _notify(item: WatchItem) -> tuple[bool, str | None]:
     notify_to = item.notify_to or DEFAULT_NOTIFY_TO
 
     if notify_to:
-        return send_email_notification(notify_to, subject, body), notify_to
+        try:
+            return send_email_notification(notify_to, subject, body), notify_to
+        except Exception:  # pragma: no cover
+            logging.exception(
+                "Notification send failed for item_code=%s", item.item_code
+            )
+            return False, notify_to
 
     return False, None
 
@@ -40,17 +46,6 @@ def check_all_prices() -> CheckSummary:
     notified_count = 0
 
     for item in items:
-        if not item.notify:
-            results.append(
-                CheckResult(
-                    item_code=item.item_code,
-                    checked=False,
-                    notified=False,
-                    message="Notification disabled",
-                )
-            )
-            continue
-
         try:
             product = get_product_by_item_code(item.item_code)
             previous_price = item.current_price
@@ -59,17 +54,27 @@ def check_all_prices() -> CheckSummary:
 
             notified = False
             recipient: str | None = None
-            notify_message = "No notification needed"
+            notify_message = (
+                "Notification disabled" if not item.notify else "No notification needed"
+            )
             if previous_price > 0:
                 drop_rate = (previous_price - product.current_price) / previous_price
             else:
                 drop_rate = 0
 
-            # should_log は「開履歴に記録するか」、notified は「メールが実際に送信できたか」を表す。
+            # should_log は「通知履歴に記録するか」、notified は「メールが実際に送信できたか」を表す。
             # 閾値を超えていても宛先が未設定の場合など、should_log=True・notified=False は起こり得る。
-            should_log = drop_rate >= item.drop_rate_threshold
+            # notify=False の場合は通知を行わないが、価格更新そのものは継続する。
+            should_log = item.notify and drop_rate >= item.drop_rate_threshold
             if should_log:
-                notified, recipient = _notify(item)
+                try:
+                    notified, recipient = _notify(item)
+                except Exception:
+                    logging.exception(
+                        "Notification process failed for item_code=%s", item.item_code
+                    )
+                    notified = False
+                    recipient = item.notify_to or DEFAULT_NOTIFY_TO
                 notify_message = "Sent" if notified else "Notification sending failed"
                 if notified:
                     notified_count += 1
